@@ -329,10 +329,17 @@ def init_db():
     )
     """)
 
+    # Insert sample questions
+    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('1/2 + 1/2', '1')")
+    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('3/4 + 1/4', '1')")
+    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('2/3 + 1/3', '1')")
+    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('5/10 simplified', '1/2')")
+    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('1/4 + 1/4', '1/2')")
+
     conn.commit()
     conn.close()
 
-    return "Database initialized!"
+    return "Database initialized with sample questions!"
 
 
 # ================= MAIN =================
