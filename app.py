@@ -20,10 +20,11 @@ app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
 app.permanent_session_lifetime = timedelta(hours=2)
 
 # MySQL Configuration (from .env file)
-app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST', 'localhost')
-app.config['MYSQL_USER'] = os.getenv('MYSQL_USER', 'root')
-app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD', 'root')
-app.config['MYSQL_DB'] = os.getenv('MYSQL_DB', 'rhythmquest')
+app.config['MYSQL_HOST'] = os.getenv('MYSQL_HOST')
+app.config['MYSQL_USER'] = os.getenv('MYSQL_USER')
+app.config['MYSQL_PASSWORD'] = os.getenv('MYSQL_PASSWORD')
+app.config['MYSQL_DB'] = os.getenv('MYSQL_DB')
+app.config['MYSQL_PORT'] = int(os.getenv('MYSQL_PORT', 3306))
 
 # Enable CSRF Protection
 csrf = CSRFProtect(app)
@@ -710,3 +711,4 @@ if __name__ == '__main__':
     # Use debug=False for production!
     debug_mode = os.getenv('FLASK_ENV', 'development') == 'development'
     app.run(debug=debug_mode, host='0.0.0.0', port=5000)
+
