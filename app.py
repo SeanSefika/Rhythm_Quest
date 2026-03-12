@@ -252,7 +252,10 @@ def submit_quiz():
         conn.commit()
         conn.close()
 
-        flash("Answer submitted!", "success")
+        if is_correct:
+            flash("Correct! 🎉", "success")
+        else:
+            flash(f"Incorrect. Correct answer: {correct_answer}", "danger")
 
         return redirect('/dashboard')
 
