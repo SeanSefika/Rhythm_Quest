@@ -116,7 +116,7 @@ def register():
             return redirect('/login')
 
         except Exception as e:
-            logger.error(str(e))
+            print(e)
             flash("Registration failed.", "danger")
 
     return render_template("register.html", form=form)
