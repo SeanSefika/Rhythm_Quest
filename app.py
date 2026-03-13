@@ -80,6 +80,7 @@ def home():
 
 @app.route('/register', methods=['GET','POST'])
 def register():
+
     form = RegistrationForm()
 
     if form.validate_on_submit():
@@ -92,6 +93,7 @@ def register():
             conn = get_db()
             cursor = conn.cursor()
 
+            # Check if email already exists
             cursor.execute(
                 "SELECT ID FROM STUDENT WHERE Email=?",
                 (email,)
@@ -102,11 +104,13 @@ def register():
                 conn.close()
                 return redirect('/register')
 
+            # Hash password
             hashed_password = generate_password_hash(password)
 
+            # Insert user
             cursor.execute(
-                "INSERT INTO STUDENT(Name,Email,Password) VALUES(?,?,?)",
-                (name,email,hashed_password)
+                "INSERT INTO STUDENT (Name, Email, Password) VALUES (?, ?, ?)",
+                (name, email, hashed_password)
             )
 
             conn.commit()
