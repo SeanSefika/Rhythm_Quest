@@ -15,7 +15,6 @@ app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
 
 csrf = CSRFProtect(app)
-
 app.permanent_session_lifetime = timedelta(hours=2)
 
 # ================= DATABASE =================
@@ -75,7 +74,6 @@ def home():
         return redirect('/dashboard')
     return redirect('/login')
 
-
 # ================= REGISTER =================
 
 @app.route('/register', methods=['GET','POST'])
@@ -93,21 +91,14 @@ def register():
             conn = get_db()
             cursor = conn.cursor()
 
-            # Check if email already exists
-            cursor.execute(
-                "SELECT ID FROM STUDENT WHERE Email=?",
-                (email,)
-            )
-
+            cursor.execute("SELECT ID FROM STUDENT WHERE Email=?", (email,))
             if cursor.fetchone():
                 flash("Email already registered!", "danger")
                 conn.close()
                 return redirect('/register')
 
-            # Hash password
             hashed_password = generate_password_hash(password)
 
-            # Insert user
             cursor.execute(
                 "INSERT INTO STUDENT (Name, Email, Password) VALUES (?, ?, ?)",
                 (name, email, hashed_password)
@@ -120,11 +111,10 @@ def register():
             return redirect('/login')
 
         except Exception as e:
-            print(e)
+            logger.error(e)
             flash("Registration failed.", "danger")
 
     return render_template("register.html", form=form)
-
 
 # ================= LOGIN =================
 
@@ -142,7 +132,7 @@ def login():
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT ID,Name,Email,Password FROM STUDENT WHERE Email=?",
+            "SELECT ID,Name,Password FROM STUDENT WHERE Email=?",
             (email,)
         )
 
@@ -161,6 +151,13 @@ def login():
 
     return render_template("login.html", form=form)
 
+# ================= LOGOUT =================
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash("Logged out successfully", "success")
+    return redirect('/login')
 
 # ================= MUSIC =================
 
@@ -171,7 +168,6 @@ def music():
         return redirect('/login')
 
     return render_template("music.html")
-
 
 # ================= QUIZ =================
 
@@ -209,7 +205,6 @@ def quiz():
 
     return render_template("quiz.html", question=question['Question'], form=form)
 
-
 # ================= SUBMIT QUIZ =================
 
 @app.route('/submit_quiz', methods=['POST'])
@@ -226,7 +221,6 @@ def submit_quiz():
         correct_answer = session.get('correct_answer')
 
         is_correct = answers_match(answer, correct_answer)
-
         academic_score = 100 if is_correct else 0
 
         conn = get_db()
@@ -239,8 +233,7 @@ def submit_quiz():
 
         attempt = cursor.fetchone()[0] + 1
 
-        cursor.execute(
-        """
+        cursor.execute("""
         INSERT INTO PERFORMANCE
         (Student_ID,Question_ID,Music_Score,Academic_Score,Attempt_Number)
         VALUES(?,?,?,?,?)
@@ -256,13 +249,16 @@ def submit_quiz():
         conn.commit()
         conn.close()
 
+        session.pop('question_id', None)
+        session.pop('correct_answer', None)
+        session.pop('music_score', None)
+
         if is_correct:
             flash("Correct! 🎉", "success")
         else:
             flash(f"Incorrect. Correct answer: {correct_answer}", "danger")
 
         return redirect('/dashboard')
-
 
 # ================= DASHBOARD =================
 
@@ -275,14 +271,11 @@ def dashboard():
     conn = get_db()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT Attempt_Number,Music_Score,Academic_Score
         FROM PERFORMANCE
         WHERE Student_ID=?
-        """,
-        (session['user_id'],)
-    )
+    """,(session['user_id'],))
 
     rows = cursor.fetchall()
     conn.close()
@@ -298,6 +291,49 @@ def dashboard():
         academic_scores=academic_scores
     )
 
+# ================= LEADERBOARD =================
+
+@app.route('/leaderboard')
+def leaderboard():
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT Student_ID,
+               AVG(Music_Score) as avg_music,
+               AVG(Academic_Score) as avg_academic,
+               COUNT(*) as attempts
+        FROM PERFORMANCE
+        GROUP BY Student_ID
+        ORDER BY avg_academic DESC
+        LIMIT 10
+    """)
+
+    leaders = cursor.fetchall()
+    conn.close()
+
+    return render_template("leaderboard.html", leaders=leaders)
+
+# ================= ACHIEVEMENTS =================
+
+@app.route('/achievements')
+def achievements():
+
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    return render_template("achievements.html")
+
+# ================= ADMIN =================
+
+@app.route('/admin')
+def admin():
+
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    return render_template("admin.html")
 
 # ================= INIT DATABASE =================
 
@@ -336,18 +372,26 @@ def init_db():
     )
     """)
 
-    # Insert sample questions
-    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('1/2 + 1/2', '1')")
-    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('3/4 + 1/4', '1')")
-    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('2/3 + 1/3', '1')")
-    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('5/10 simplified', '1/2')")
-    cursor.execute("INSERT INTO QUESTIONS (Question, CorrectAnswer) VALUES ('1/4 + 1/4', '1/2')")
+    # Insert questions only if empty
+    cursor.execute("SELECT COUNT(*) FROM QUESTIONS")
+    if cursor.fetchone()[0] == 0:
+        questions = [
+            ("1/2 + 1/2","1"),
+            ("3/4 + 1/4","1"),
+            ("2/3 + 1/3","1"),
+            ("5/10 simplified","1/2"),
+            ("1/4 + 1/4","1/2")
+        ]
+
+        cursor.executemany(
+            "INSERT INTO QUESTIONS (Question,CorrectAnswer) VALUES (?,?)",
+            questions
+        )
 
     conn.commit()
     conn.close()
 
-    return "Database initialized with sample questions!"
-
+    return "Database initialized!"
 
 # ================= MAIN =================
 
