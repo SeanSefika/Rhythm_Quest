@@ -6,12 +6,23 @@ from forms import RegistrationForm, LoginForm, QuizForm
 from datetime import timedelta
 import sqlite3
 import os
+import sys
 import logging
 from fractions import Fraction
 
-load_dotenv()
+# Determine the base directory (works for dev and PyInstaller bundled EXE)
+if getattr(sys, 'frozen', False):
+    # Running as compiled EXE
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # Running as normal Python script
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app = Flask(__name__)
+load_dotenv(os.path.join(BASE_DIR, '.env'))
+
+app = Flask(__name__,
+            template_folder=os.path.join(BASE_DIR, 'templates'),
+            static_folder=os.path.join(BASE_DIR, 'static'))
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
 
 csrf = CSRFProtect(app)
@@ -20,17 +31,19 @@ app.permanent_session_lifetime = timedelta(hours=2)
 # ================= DATABASE =================
 
 def get_db():
-    conn = sqlite3.connect("rhythmquest.db")
+    db_path = os.path.join(BASE_DIR, 'rhythmquest.db')
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
 # ================= LOGGING =================
 
-if not os.path.exists("logs"):
-    os.makedirs("logs")
+logs_dir = os.path.join(BASE_DIR, 'logs')
+if not os.path.exists(logs_dir):
+    os.makedirs(logs_dir)
 
 logging.basicConfig(
-    filename="logs/app.log",
+    filename=os.path.join(logs_dir, 'app.log'),
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -372,6 +385,29 @@ def init_db():
     )
     """)
 
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ACHIEVEMENTS(
+    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name TEXT NOT NULL UNIQUE,
+    Description TEXT NOT NULL,
+    Icon TEXT DEFAULT '🏆',
+    Requirement TEXT,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS USER_ACHIEVEMENTS(
+    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+    Student_ID INTEGER NOT NULL,
+    Achievement_ID INTEGER NOT NULL,
+    UnlockedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (Student_ID) REFERENCES STUDENT(ID) ON DELETE CASCADE,
+    FOREIGN KEY (Achievement_ID) REFERENCES ACHIEVEMENTS(ID) ON DELETE CASCADE,
+    UNIQUE (Student_ID, Achievement_ID)
+    )
+    """)
+
     # Insert questions only if empty
     cursor.execute("SELECT COUNT(*) FROM QUESTIONS")
     if cursor.fetchone()[0] == 0:
@@ -396,4 +432,4 @@ def init_db():
 # ================= MAIN =================
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=False, port=5000, use_reloader=False)
