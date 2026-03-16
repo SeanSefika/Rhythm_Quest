@@ -1,29 +1,29 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, dialog } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
 let mainWindow;
 let flaskProcess;
 const PORT = 5000;
 
 function getFlaskExePath() {
-  // In dev mode, we skip launching the EXE
-  if (require('electron-is-dev')) {
-    return null;
+  const exePath = path.join(process.resourcesPath, 'backend', 'run_server.exe');
+  if (fs.existsSync(exePath)) {
+    return exePath;
   }
-  // In production, the RhythmQuest.exe is in the same folder as this app
-  const exePath = path.join(path.dirname(app.getPath('exe')), 'backend', 'run_server.exe');
-  return exePath;
+  // Show an explicit error for debugging the path
+  dialog.showErrorBox('Backend Not Found', `Attempted to find backend at:\n${exePath}\n\nprocess.resourcesPath:\n${process.resourcesPath}`);
+  return null;
 }
 
-function waitForFlask(url, retries, callback) {
-  const http = require('http');
-  http.get(url, (res) => {
+function waitForFlask(retries, callback) {
+  http.get(`http://127.0.0.1:${PORT}`, (res) => {
     callback(true);
   }).on('error', () => {
     if (retries > 0) {
-      setTimeout(() => waitForFlask(url, retries - 1, callback), 500);
+      setTimeout(() => waitForFlask(retries - 1, callback), 500);
     } else {
       callback(false);
     }
@@ -32,19 +32,25 @@ function waitForFlask(url, retries, callback) {
 
 function startFlaskBackend() {
   const exePath = getFlaskExePath();
-  if (!exePath || !fs.existsSync(exePath)) {
-    console.log('Running in dev mode or EXE not found, skipping Flask launch.');
+
+  if (!exePath) {
+    console.log('Backend EXE not found - assuming dev mode (Flask should already be running).');
     return;
   }
+
+  console.log('Starting Flask backend from:', exePath);
 
   flaskProcess = spawn(exePath, [], {
     cwd: path.dirname(exePath),
     detached: false,
-    windowsHide: true, // Hide the console window completely
+    windowsHide: true,
     stdio: 'ignore'
   });
 
-  flaskProcess.on('error', (err) => console.error('Flask process error:', err));
+  flaskProcess.on('error', (err) => {
+    console.error('Flask process error:', err);
+    dialog.showErrorBox('Backend Error', 'Failed to start the application backend.\n\n' + err.message);
+  });
 }
 
 function createWindow() {
@@ -52,21 +58,31 @@ function createWindow() {
     width: 1200,
     height: 800,
     title: 'RhythmQuest',
-    icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true
     },
-    // Make it look like a proper desktop app — no browser chrome
     autoHideMenuBar: true,
+    show: false,  // Don't show until loaded
   });
 
-  // Remove the menu bar entirely
   mainWindow.setMenuBarVisibility(false);
 
   mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
 
-  // Open external links in the default browser, not Electron
+  // Show window only when fully loaded
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Page failed to load:', errorDescription);
+    // Retry loading after a second
+    setTimeout(() => {
+      if (mainWindow) mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
+    }, 1000);
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -80,12 +96,15 @@ function createWindow() {
 app.whenReady().then(() => {
   startFlaskBackend();
 
-  // Wait for Flask to be ready before opening the window
-  waitForFlask(`http://127.0.0.1:${PORT}`, 20, (ready) => {
+  // Wait up to 30 seconds for Flask to be ready (60 x 500ms)
+  waitForFlask(60, (ready) => {
     if (ready) {
       createWindow();
     } else {
-      console.error('Flask failed to start');
+      dialog.showErrorBox(
+        'Startup Error',
+        'Could not connect to the application backend after 30 seconds.\n\nPlease try launching the app again.'
+      );
       app.quit();
     }
   });
@@ -96,7 +115,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // Kill Flask when window is closed
   if (flaskProcess) {
     flaskProcess.kill();
   }

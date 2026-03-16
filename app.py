@@ -10,19 +10,25 @@ import sys
 import logging
 from fractions import Fraction
 
-# Determine the base directory (works for dev and PyInstaller bundled EXE)
+# Determine the directories (works for dev and PyInstaller bundled EXE)
 if getattr(sys, 'frozen', False):
     # Running as compiled EXE
     BASE_DIR = os.path.dirname(sys.executable)
+    # PyInstaller 6.x+ puts data inside _internal
+    if os.path.exists(os.path.join(BASE_DIR, '_internal', 'templates')):
+        BUNDLE_DIR = os.path.join(BASE_DIR, '_internal')
+    else:
+        BUNDLE_DIR = getattr(sys, '_MEIPASS', BASE_DIR)
 else:
     # Running as normal Python script
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = BUNDLE_DIR
 
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 app = Flask(__name__,
-            template_folder=os.path.join(BASE_DIR, 'templates'),
-            static_folder=os.path.join(BASE_DIR, 'static'))
+            template_folder=os.path.join(BUNDLE_DIR, 'templates'),
+            static_folder=os.path.join(BUNDLE_DIR, 'static'))
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-key-change-in-production')
 
 csrf = CSRFProtect(app)
@@ -272,6 +278,67 @@ def submit_quiz():
             flash(f"Incorrect. Correct answer: {correct_answer}", "danger")
 
         return redirect('/dashboard')
+
+    # If validation fails, re-render the form with error messages
+    question = session.get('question', '')
+    if not question:
+        # Fallback if question text wasn't in session (we need it for re-rendering)
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT Question FROM QUESTIONS WHERE ID=?", (session.get('question_id'),))
+        row = cursor.fetchone()
+        if row:
+            question = row['Question']
+        conn.close()
+
+    return render_template("quiz.html", question=question, form=form)
+
+# ================= PROFILE =================
+
+@app.route('/profile')
+def profile():
+
+    if 'user_id' not in session:
+        return redirect('/login')
+
+    user_id = session['user_id']
+
+    conn = get_db()
+    cursor = conn.cursor()
+
+    # Get basic user info
+    cursor.execute("SELECT Name, Email, date(CreatedAt) as joined FROM STUDENT WHERE ID=?", (user_id,))
+    user_info = cursor.fetchone()
+
+    # Get performance stats
+    cursor.execute("""
+        SELECT 
+            COUNT(*) as total_attempts,
+            SUM(CASE WHEN Academic_Score = 100 THEN 1 ELSE 0 END) as correct_answers,
+            COALESCE(AVG(Music_Score), 0) as avg_music,
+            COALESCE(AVG(Academic_Score), 0) as avg_academic,
+            COALESCE(MAX(Music_Score), 0) as max_music,
+            COALESCE(MAX(Academic_Score), 0) as max_academic
+        FROM PERFORMANCE
+        WHERE Student_ID=?
+    """, (user_id,))
+    
+    stats = cursor.fetchone()
+    conn.close()
+
+    profile_data = {
+        'name': user_info['Name'],
+        'email': user_info['Email'],
+        'joined': user_info['joined'],
+        'total_attempts': stats['total_attempts'],
+        'correct_answers': stats['correct_answers'],
+        'avg_music': round(stats['avg_music'], 1),
+        'avg_academic': round(stats['avg_academic'], 1),
+        'max_music': stats['max_music'],
+        'max_academic': stats['max_academic']
+    }
+
+    return render_template("profile.html", profile=profile_data)
 
 # ================= DASHBOARD =================
 

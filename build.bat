@@ -5,12 +5,12 @@ echo ======================================
 
 echo.
 echo [1/4] Installing Python dependencies...
-pip install pyinstaller -q
+python -m pip install pyinstaller -q
 echo Done.
 
 echo.
 echo [2/4] Packaging Flask backend with PyInstaller...
-pyinstaller rhythmquest.spec --noconfirm --clean
+python -m PyInstaller rhythmquest.spec --noconfirm --clean
 if %errorlevel% neq 0 (
     echo ERROR: PyInstaller failed!
     pause

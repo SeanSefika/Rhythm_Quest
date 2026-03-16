@@ -47,3 +47,10 @@ instance/
 # Logs (ignore log files but keep directory)
 logs/*.log
 logs/*.txt
+  
+# Electron  
+electron/node_modules/  
+electron/backend/  
+electron/dist/  
+*.log  
+electron_log.txt  
